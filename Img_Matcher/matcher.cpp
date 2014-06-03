@@ -485,6 +485,12 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 					break;
 		}
 
+		delete mj_list;
+		delete mj_angle_list;
+
+		mj_list = NULL;
+		mj_angle_list = NULL;
+
 
 		//level  ∆•≈‰
 		int temp_angle_index;

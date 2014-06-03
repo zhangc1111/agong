@@ -101,7 +101,7 @@ int Matcher::CreateModel(byte *image, int width, int height, int MaxLevel, int s
 	//提取各层sobel图像
 	for(int i = 0; i< MaxLevel;i++)
 	{
-		Canny(input_template[i], canny_edges[i], 50, 128);
+		Canny(input_template[i], canny_edges[i], (50 - i*10), (60-i*10));
 		Sobel(input_template[i], template_sobel_x[i], CV_16S, 1, 0, m_size[ModelIndex]);
 		Sobel(input_template[i], template_sobel_y[i], CV_16S, 0, 1, m_size[ModelIndex]);
 	}
@@ -245,10 +245,15 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 		//int myangle_index[5];
 		//float m_max[5];
 
-		int *myx = new int[MaxLevel];
-		int *myy = new int[MaxLevel];
-		int *myangle_index = new int[MaxLevel];
-		float *m_max = new float[MaxLevel];
+		//int *myx = new int[MaxLevel];
+		//int *myy = new int[MaxLevel];
+		//int *myangle_index = new int[MaxLevel];
+		//float *m_max = new float[MaxLevel];
+
+		int** myx = new int*[MaxLevel];
+		int** myy = new int*[MaxLevel];
+		int** myangle_index = new int*[MaxLevel];
+		float** m_max = new float*[MaxLevel];
 
 
 		int temp_x_index, temp_y_index;
@@ -281,6 +286,12 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 
 		for(int level_index = 0;level_index < MaxLevel;level_index++)
 		{
+			
+			myx[level_index] = new int[10];
+			myy[level_index] = new int[10];
+			myangle_index[level_index] = new int[10];
+			m_max[level_index] = new float[10];
+			
 			//提取各层sobel图像
 			Sobel(image[level_index], image_sobel_x[level_index], CV_16S, 1, 0, m_size[ModelIndex]);
 			Sobel(image[level_index], image_sobel_y[level_index], CV_16S, 0, 1, m_size[ModelIndex]);
@@ -345,17 +356,26 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 	
 		nRows = image_height[MaxLevel-1];
 		nCols = image_width[MaxLevel-1];
-		myx[MaxLevel-1] = 0;
-		myy[MaxLevel-1] = 0;
-		myangle_index[MaxLevel-1] = 0;
-		m_max[MaxLevel-1] = 0;
+		myx[MaxLevel-1][0] = 0;
+		myy[MaxLevel-1][0] = 0;
+		myangle_index[MaxLevel-1][0] = 0;
+		m_max[MaxLevel-1][0] = 0;
 		float nt_n = template_point_count[ModelIndex][MaxLevel-1] * user_threshold - template_point_count[ModelIndex][MaxLevel-1];
+
+		float* mj_list = new float[nRows * nCols];
+		int* mj_angle_list = new int[nRows * nCols];
+
 		for(int yy = 0; yy < nRows; ++yy)
 		//for(int y = -y_min[MaxLevel-1]; y < nRows - y_max[MaxLevel -1]; ++y)
 		{
 			for (int xx = 0; xx< nCols; ++xx)
 			//for (int x = -x_min[MaxLevel-1]; x< nCols - x_max[MaxLevel -1]; ++x)
 			{
+				float temp_mj_max = 0;
+				int temp_max_x = 0;
+				int temp_max_y = 0;
+				int temp_max_angle = 0;
+				
 				for (int angle_index = 0; angle_index < angle_size[ModelIndex][MaxLevel-1]; angle_index++)
 				{
 					
@@ -394,15 +414,15 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 					}
 					mj = mj/template_point_count[ModelIndex][MaxLevel-1];
 					//qDebug()<<"hh "<<mj;
-					if(mj>0.70)
+					if(mj>0.50)
 					{
 						//qDebug()<<"hh "<<mj;
-						if (mj> m_max[MaxLevel-1])
+						if (mj> temp_mj_max)
 						{
-							myx[MaxLevel-1] = xx;
-							myy[MaxLevel-1] = yy;
-							myangle_index[MaxLevel-1] = angle_index;
-							m_max[MaxLevel-1] = mj;
+							temp_mj_max = mj;
+							temp_max_x = xx;
+							temp_max_y = yy;
+							temp_max_angle = angle_index;
 					
 
 						}
@@ -412,7 +432,57 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 
 
 				}
+
+				mj_list[yy*nCols+xx] = temp_mj_max;
+				mj_angle_list[yy*nCols+xx] = temp_max_angle;
+				if(temp_mj_max > m_max[MaxLevel-1][0])
+				{
+					myx[MaxLevel-1][0] = temp_max_x;
+					myy[MaxLevel-1][0] = temp_max_y;
+					myangle_index[MaxLevel-1][0] = temp_max_angle;
+					m_max[MaxLevel-1][0] = temp_mj_max;
+				}
 			}
+		}
+
+		int max_point_count = 0;
+		for(max_point_count = 1; max_point_count < 2; max_point_count++)
+		{
+			//clear m_max and its neighbour to search second largest.
+			for(int i = -5; i<=5;i++)
+				for(int j = -5;j<=5;j++)
+				{
+					int tempindex = ((myy[MaxLevel-1][max_point_count-1])+i)*nCols + myx[MaxLevel-1][max_point_count-1]+j;
+					if (tempindex >=0 && tempindex < nRows *nCols)
+						mj_list[tempindex] = 0;
+				}
+
+
+				//for test...  second score......................................
+				myx[MaxLevel-1][max_point_count] = 0;
+				myy[MaxLevel-1][max_point_count] = 0;
+				myangle_index[MaxLevel-1][max_point_count] = 0;
+				m_max[MaxLevel-1][max_point_count] = 0;
+
+				for(int yy = 0; yy < nRows; ++yy)
+					//for(int y = -y_min[MaxLevel-1]; y < nRows - y_max[MaxLevel -1]; ++y)
+				{
+					for (int xx = 0; xx< nCols; ++xx)
+						//for (int x = -x_min[MaxLevel-1]; x< nCols - x_max[MaxLevel -1]; ++x)
+					{
+						if( mj_list[yy*nCols + xx]> m_max[MaxLevel-1][max_point_count])
+						{
+							m_max[MaxLevel-1][max_point_count] = mj_list[yy*nCols + xx];
+							myx[MaxLevel-1][max_point_count] = xx;
+							myy[MaxLevel-1][max_point_count] = yy;
+							myangle_index[MaxLevel-1][max_point_count] = mj_angle_list[yy*nCols + xx];
+						}
+
+					}
+				}
+
+				if(m_max[MaxLevel-1][max_point_count] < 0.7)
+					break;
 		}
 
 
@@ -425,20 +495,20 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 		{
 			nRows = image_height[level_index];
 			nCols = image_width[level_index];
-			myx[level_index] = 0;
-			myy[level_index] = 0;
-			if(myx[level_index+1] == 0 || myy[level_index+1] == 0)
+			myx[level_index][0] = 0;
+			myy[level_index][0] = 0;
+			if(myx[level_index+1][0] == 0 || myy[level_index+1][0] == 0)
 				break;
-			myangle_index[level_index] = 0;
-			m_max[level_index] = 0;
+			myangle_index[level_index][0] = 0;
+			m_max[level_index][0] = 0;
 		
 			nt_n = template_point_count[ModelIndex][level_index] * user_threshold - template_point_count[ModelIndex][level_index];
-			for(int yy = myy[level_index+1]*2-3; yy <= myy[level_index+1]*2+3; ++yy)
+			for(int yy = myy[level_index+1][0]*2-3; yy <= myy[level_index+1][0]*2+3; ++yy)
 			{
-				for (int xx = myx[level_index+1]*2-3; xx<=myx[level_index+1]*2+3; ++xx)
+				for (int xx = myx[level_index+1][0]*2-3; xx<=myx[level_index+1][0]*2+3; ++xx)
 				{
 				
-					for (int angle_index = myangle_index[level_index+1]*2 - 2; angle_index <= myangle_index[level_index+1]*2 + 2; angle_index++)
+					for (int angle_index = myangle_index[level_index+1][0]*2 - 2; angle_index <= myangle_index[level_index+1][0]*2 + 2; angle_index++)
 					{
 						vector<double> temp_score;
 						temp_score.clear();
@@ -477,32 +547,110 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 						mj = mj/template_point_count[ModelIndex][level_index];
 
 						//qDebug()<<x<<y<<temp_angle_index<<mj;
-						if (mj> m_max[level_index])
+						if (mj> m_max[level_index][0])
 						{
-							m_max[level_index] = mj;
-							myx[level_index] = xx;
-							myy[level_index] = yy;
-							myangle_index[level_index] = temp_angle_index;
+							m_max[level_index][0] = mj;
+							myx[level_index][0] = xx;
+							myy[level_index][0] = yy;
+							myangle_index[level_index][0] = temp_angle_index;
 
 						}
 					}
 				}
 			}
+
+
+			if(level_index < MaxLevel-2)
+				continue;
+
+			myx[level_index][1] = 0;
+			myy[level_index][1] = 0;
+			if(myx[level_index+1][1] == 0 || myy[level_index+1][1] == 0)
+				continue;
+			myangle_index[level_index][1] = 0;
+			m_max[level_index][1] = 0;
+			for(int yy = myy[level_index+1][1]*2-3; yy <= myy[level_index+1][1]*2+3; ++yy)
+			{
+				for (int xx = myx[level_index+1][1]*2-3; xx<=myx[level_index+1][1]*2+3; ++xx)
+				{
+
+					for (int angle_index = myangle_index[level_index+1][1]*2 - 2; angle_index <= myangle_index[level_index+1][1]*2 + 2; angle_index++)
+					{
+						vector<double> temp_score;
+						temp_score.clear();
+						temp_angle_index = angle_index;
+						if (angle_index < 0)
+							temp_angle_index = angle_index + angle_size[ModelIndex][level_index];
+
+						if (angle_index >= angle_size[ModelIndex][level_index])
+							temp_angle_index = angle_index - angle_size[ModelIndex][level_index];
+						//vector<Point> temp_point_with_zero_score;
+						//temp_point_with_zero_score.clear();
+
+
+						float mj = 0;
+						DIRECTION temp_template_direction, temp_image_direction;
+						LOCATION temp_template_location;
+						for (int template_point_index = 0; template_point_index < template_point_count[ModelIndex][level_index]; template_point_index++)
+						{
+							temp_template_direction = template_direction[ModelIndex][level_index][temp_angle_index][template_point_index];
+							temp_template_location = template_location[ModelIndex][level_index][temp_angle_index][template_point_index];
+
+							temp_x_index = temp_template_location.x + xx;
+							temp_y_index = temp_template_location.y + yy;
+
+							if(!(temp_x_index >=0 && temp_x_index < image_width[level_index] && temp_y_index>=0 && temp_y_index < image_height[level_index]))
+								continue;
+
+
+							//temp_image_direction = image_direction_map[level_index][temp_y_index][temp_x_index];
+							temp_image_direction = image_direction_map[level_index][temp_y_index*nCols+temp_x_index];
+
+
+							//mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[ModelIndex][level_index][template_point_index] * image_direction_length[level_index][temp_y_index][temp_x_index]);
+							mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[ModelIndex][level_index][template_point_index] * image_direction_length[level_index][temp_y_index*nCols+temp_x_index]);
+						}
+						mj = mj/template_point_count[ModelIndex][level_index];
+
+						//qDebug()<<x<<y<<temp_angle_index<<mj;
+						if (mj> m_max[level_index][1])
+						{
+							m_max[level_index][1] = mj;
+							myx[level_index][1] = xx;
+							myy[level_index][1] = yy;
+							myangle_index[level_index][1] = temp_angle_index;
+
+						}
+					}
+				}
+			}
+
+
+			if(level_index == MaxLevel-2)
+			{
+				if(m_max[level_index][0] < m_max[level_index][1])
+				{
+					m_max[level_index][0] = m_max[level_index][1];
+					myx[level_index][0] = myx[level_index][1];
+					myy[level_index][0] = myy[level_index][1];
+					myangle_index[level_index][0] = myangle_index[level_index][1];
+				}
+			}
 		}
 		
 	
-		final_angle = myangle_index[0]*step[ModelIndex][0];
+		final_angle = myangle_index[0][0]*step[ModelIndex][0];
 		if(final_angle > 180)
 			final_angle = final_angle - 360;
 
 
-		if(m_max[0] > score_threshold)
+		if(m_max[0][0] > score_threshold)
 		{
-			x[match_count] = myx[0];
-			y[match_count] = myy[0];
+			x[match_count] = myx[0][0];
+			y[match_count] = myy[0][0];
 			angle[match_count] = final_angle;
 			index[match_count] = ModelIndex;
-			score[match_count] = m_max[0];
+			score[match_count] = m_max[0][0];
 			match_count++;
 		}
 
@@ -515,11 +663,20 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 
 			delete[] image_direction_map[level_index];
 			delete[] image_direction_length[level_index];
+			delete[] myx[level_index];
+			delete[] myy[level_index];
+			delete[] myangle_index[level_index];
+			delete[] m_max[level_index];
 
 		}
 
 		delete[] image_direction_map;
 		delete[] image_direction_length;
+
+		delete[] myx;
+		delete[] myy;
+		delete[] myangle_index;
+		delete[] m_max;
 
 		delete[] image;
 		delete[] image_width;
@@ -527,10 +684,6 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 		delete[] image_sobel_x;
 		delete[] image_sobel_y;
 
-		delete[] myx;
-		delete[] myy;
-		delete[] myangle_index;
-		delete[] m_max;
 	}
 
 	return match_count;

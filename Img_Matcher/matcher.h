@@ -57,16 +57,26 @@ public:
 
 private:
 
-	vector<int> ModelIndexLIb;
-	
-	vector<int*> template_point_count;
-	vector<LOCATION***> template_location;
-	vector<DIRECTION***> template_direction;
-	vector<float**> template_direction_length;
+	//vector<int> ModelIndexLIb;
+	//
+	//vector<int*> template_point_count;
+	//vector<LOCATION***> template_location;
+	//vector<DIRECTION***> template_direction;
+	//vector<float**> template_direction_length;
 
-	vector<int*> angle_size;
-	vector<float*> step;
-	vector<int> m_size;
+	//vector<int*> angle_size;
+	//vector<float*> step;
+	//vector<int> m_size;
+
+	int *template_point_count;
+	LOCATION*** template_location;
+	DIRECTION*** template_direction;
+	float** template_direction_length;
+
+	int* angle_size;
+	float* step;
+	int m_size;
+
 
 	//Point point1;
 	//Point point2;
@@ -75,15 +85,15 @@ private:
 
 
 public:
-	int CreateModel(byte *image, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int ModelIndex);
-	int Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float* x, float* y, float* angle, float* score, int* index);
+	int CreateModel(byte *image, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2);
+	int Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score);
 };
 
 extern "C" class DLL_EXPORT MatcherAdapter
 {
 public:
-	static int CreateModel(unsigned char* model, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int ModelIndex, int MatcherIndex);
-	static int Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float* x, float* y, float* angle, float* score, int* index, int MatcherIndex);
+	static int CreateModel(unsigned char* model, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int MatcherIndex);
+	static int Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle,int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex);
 
 private:
 	static Matcher matcher[999];

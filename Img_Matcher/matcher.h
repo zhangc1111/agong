@@ -86,14 +86,17 @@ private:
 
 public:
 	int CreateModel(byte *image, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2);
-	int Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score);
+	int Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float& x, float& y, float& angle, float& score);
+	int MatchMulti(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score);
 };
 
 extern "C" class DLL_EXPORT MatcherAdapter
 {
 public:
 	static int CreateModel(unsigned char* model, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int MatcherIndex);
-	static int Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle,int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex);
+	static int Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float& x, float& y, float& angle, float& score, int MatcherIndex);
+	static int MatchMulti(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle,int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex);
+
 
 private:
 	static Matcher matcher[999];

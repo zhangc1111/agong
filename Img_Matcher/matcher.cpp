@@ -195,7 +195,7 @@ int Matcher::CreateModel(byte *image, int width, int height, int MaxLevel, int s
 }
 
 
-int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score)
+int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score)
 {
 
 
@@ -642,7 +642,7 @@ int MatcherAdapter::CreateModel(unsigned char* model, int width, int height, int
 	return matcher[MatcherIndex].CreateModel(model, width, height, MaxLevel, sobel_size, step_length, threshold1, threshold2);
 }
 
-int MatcherAdapter::Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex)
+int MatcherAdapter::MatchMulti(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex)
 {
-	return matcher[MatcherIndex].Match(image, width, height, MaxLevel, min_angle, max_angle, max_instance, score_threshold, x, y, angle, score);
+	return matcher[MatcherIndex].MatchMulti(image, width, height, MaxLevel, min_angle, max_angle, max_instance, score_threshold, x, y, angle, score);
 }

@@ -635,6 +635,493 @@ int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, 
 }
 
 
+int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float& x, float& y, float& angle, float& score)
+{
+
+
+	Mat des_image = Mat(height, width, CV_8U, input_image);
+
+
+	if (des_image.empty())
+		return 1;
+
+	float user_threshold = 0.8;
+	float g = 0.9;
+	float f;
+	f = (1-g*user_threshold)/(1-user_threshold);
+	int match_count = 0;
+
+	//Mat_<uchar> image[5];
+	//int image_width[5];
+	//int image_height[5];
+
+	//Mat image_sobel_x[5]; 
+	//Mat image_sobel_y[5];
+
+	Mat_<uchar> *image = new Mat_<uchar>[MaxLevel];
+	int *image_width = new int[MaxLevel];
+	int *image_height = new int[MaxLevel];
+
+	Mat *image_sobel_x = new Mat[MaxLevel]; 
+	Mat *image_sobel_y = new Mat[MaxLevel];
+
+
+	int nRows, nCols;
+	short* px;
+	short* py;
+
+	int length;
+	//int myx[5];
+	//int myy[5];
+	//int myangle_index[5];
+	//float m_max[5];
+
+	//int *myx = new int[MaxLevel];
+	//int *myy = new int[MaxLevel];
+	//int *myangle_index = new int[MaxLevel];
+	//float *m_max = new float[MaxLevel];
+
+	int** myx = new int*[MaxLevel];
+	int** myy = new int*[MaxLevel];
+	int** myangle_index = new int*[MaxLevel];
+	float** m_max = new float*[MaxLevel];
+
+
+	int temp_x_index, temp_y_index;
+
+	Point point1, point2, point3, point4, point1_new, point2_new, point3_new, point4_new;
+	float final_angle;
+
+	//存放图像中的sobel向量与长度
+	//DIRECTION ***image_direction_map = new DIRECTION **[MaxLevel];
+	//float ***image_direction_length = new float **[MaxLevel];
+
+	DIRECTION** image_direction_map = new DIRECTION*[MaxLevel];
+	float** image_direction_length = new float*[MaxLevel];
+
+	//显示结果图像
+	Mat output = des_image.clone();
+
+	//转化为单通道图像
+	if(des_image.channels() != 1)
+		cvtColor(des_image, image[0], CV_BGR2GRAY);
+	else
+		image[0] = des_image.clone();
+
+	//生成图像金字塔
+	for(int i=0;i<MaxLevel-1;i++)
+	{
+		pyrDown(image[i], image[i+1]);
+	}
+
+
+	for(int level_index = 0;level_index < MaxLevel;level_index++)
+	{
+
+		myx[level_index] = new int[10];
+		myy[level_index] = new int[10];
+		myangle_index[level_index] = new int[10];
+		m_max[level_index] = new float[10];
+
+		//提取各层sobel图像
+		Sobel(image[level_index], image_sobel_x[level_index], CV_16S, 1, 0, m_size);
+		Sobel(image[level_index], image_sobel_y[level_index], CV_16S, 0, 1, m_size);
+
+		//Canny(image[level_index], canny_image[level_index], 50, 128);
+
+		image_width[level_index] = image[level_index].size().width;
+		image_height[level_index] = image[level_index].size().height;
+
+		//为sobel向量map和向量长度map分配指针内存
+		//image_direction_map[level_index] = new DIRECTION *[image_height[level_index]];
+		//image_direction_length[level_index] = new float *[image_height[level_index]];
+
+		image_direction_map[level_index] = new DIRECTION[image_height[level_index]*image_width[level_index]];
+		image_direction_length[level_index] = new float[image_height[level_index]*image_width[level_index]];
+
+		//将sobel向量和长度存入map中
+		nRows = image_height[level_index];
+		nCols = image_width[level_index];
+
+		for( int i = 0; i < nRows; ++i)  
+		{  
+			px = image_sobel_x[level_index].ptr<short>(i);
+			py = image_sobel_y[level_index].ptr<short>(i);
+
+			//image_direction_map[level_index][i] = new DIRECTION[nCols];
+			//image_direction_length[level_index][i] = new float[nCols];
+
+			for ( int j = 0; j < nCols; ++j)  
+			{  
+				//image_direction_map[level_index][i][j].x = px[j];
+				//image_direction_map[level_index][i][j].y = py[j];
+
+				image_direction_map[level_index][i*nCols+j].x = px[j];
+				image_direction_map[level_index][i*nCols+j].y = py[j];
+
+				length = (int)px[j]*(int)px[j] + (int)py[j]*(int)py[j];
+
+				//canny selection
+				if(length > 100)
+					//if(pcanny[j] > 0)
+				{
+					//image_direction_length[level_index][i][j] = 1.0/sqrt((float)length);
+					image_direction_length[level_index][i*nCols+j] = 1.0/sqrt((float)length);
+					//point_image_map[level_index].at<uchar>(i, j) = 255;
+				}
+				else
+					//image_direction_length[level_index][i][j] = 0;
+					image_direction_length[level_index][i*nCols+j] = 0;
+			}  
+		}
+
+	}
+
+
+
+	//从最粗糙层次开始匹配
+	vector<double> point_score;
+	vector<Point> point_with_zero_score;
+	vector<float> temp_length_list;
+	vector<float> image_length_list;
+
+	nRows = image_height[MaxLevel-1];
+	nCols = image_width[MaxLevel-1];
+	myx[MaxLevel-1][0] = 0;
+	myy[MaxLevel-1][0] = 0;
+	myangle_index[MaxLevel-1][0] = 0;
+	m_max[MaxLevel-1][0] = 0;
+	float nt_n = template_point_count[MaxLevel-1] * user_threshold - template_point_count[MaxLevel-1];
+
+	float* mj_list = new float[nRows * nCols];
+	int* mj_angle_list = new int[nRows * nCols];
+
+	for(int yy = 0; yy < nRows; ++yy)
+		//for(int y = -y_min[MaxLevel-1]; y < nRows - y_max[MaxLevel -1]; ++y)
+	{
+		for (int xx = 0; xx< nCols; ++xx)
+			//for (int x = -x_min[MaxLevel-1]; x< nCols - x_max[MaxLevel -1]; ++x)
+		{
+			float temp_mj_max = 0;
+			int temp_max_x = 0;
+			int temp_max_y = 0;
+			int temp_max_angle = 0;
+
+			for (int angle_index = 0; angle_index < angle_size[MaxLevel-1]; angle_index++)
+			{
+
+				float actual_angle = angle_index * step[MaxLevel-1];
+				if(actual_angle > 180)
+					actual_angle = actual_angle - 360;
+
+				if(actual_angle < min_angle || actual_angle > max_angle)
+					continue;
+
+				float mj = 0;
+				DIRECTION temp_template_direction, temp_image_direction;
+				LOCATION temp_template_location;
+
+
+				for (int template_point_index = 0; template_point_index < template_point_count[MaxLevel-1]; template_point_index++)
+				{
+					temp_template_direction = template_direction[MaxLevel-1][angle_index][template_point_index];
+					temp_template_location = template_location[MaxLevel-1][angle_index][template_point_index];
+
+					temp_x_index = temp_template_location.x + xx;
+					temp_y_index = temp_template_location.y + yy;
+
+					if(!(temp_x_index >=0 && temp_x_index < nCols && temp_y_index>=0 && temp_y_index < nRows))
+						continue;
+
+
+					//temp_image_direction = image_direction_map[MaxLevel-1][temp_y_index][temp_x_index];
+					temp_image_direction = image_direction_map[MaxLevel-1][temp_y_index*nCols+temp_x_index];
+
+					//mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[MaxLevel-1][template_point_index] * image_direction_length[MaxLevel-1][temp_y_index][temp_x_index]);
+					mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[MaxLevel-1][template_point_index] * image_direction_length[MaxLevel-1][temp_y_index*nCols+temp_x_index]);
+					if(mj < min(nt_n + f*(template_point_index+1), user_threshold*((template_point_index+1))))
+						break;
+
+				}
+				mj = mj/template_point_count[MaxLevel-1];
+				//qDebug()<<"hh "<<mj;
+				if(mj>0.50)
+				{
+					//qDebug()<<"hh "<<mj;
+					if (mj> temp_mj_max)
+					{
+						temp_mj_max = mj;
+						temp_max_x = xx;
+						temp_max_y = yy;
+						temp_max_angle = angle_index;
+
+
+					}
+				}
+
+
+
+
+			}
+
+			mj_list[yy*nCols+xx] = temp_mj_max;
+			mj_angle_list[yy*nCols+xx] = temp_max_angle;
+			if(temp_mj_max > m_max[MaxLevel-1][0])
+			{
+				myx[MaxLevel-1][0] = temp_max_x;
+				myy[MaxLevel-1][0] = temp_max_y;
+				myangle_index[MaxLevel-1][0] = temp_max_angle;
+				m_max[MaxLevel-1][0] = temp_mj_max;
+			}
+		}
+	}
+
+	int max_point_count = 0;
+	for(max_point_count = 1; max_point_count < 2; max_point_count++)
+	{
+		//clear m_max and its neighbour to search second largest.
+		for(int i = -5; i<=5;i++)
+			for(int j = -5;j<=5;j++)
+			{
+				int tempindex = ((myy[MaxLevel-1][max_point_count-1])+i)*nCols + myx[MaxLevel-1][max_point_count-1]+j;
+				if (tempindex >=0 && tempindex < nRows *nCols)
+					mj_list[tempindex] = 0;
+			}
+
+
+			//for test...  second score......................................
+			myx[MaxLevel-1][max_point_count] = 0;
+			myy[MaxLevel-1][max_point_count] = 0;
+			myangle_index[MaxLevel-1][max_point_count] = 0;
+			m_max[MaxLevel-1][max_point_count] = 0;
+
+			for(int yy = 0; yy < nRows; ++yy)
+				//for(int y = -y_min[MaxLevel-1]; y < nRows - y_max[MaxLevel -1]; ++y)
+			{
+				for (int xx = 0; xx< nCols; ++xx)
+					//for (int x = -x_min[MaxLevel-1]; x< nCols - x_max[MaxLevel -1]; ++x)
+				{
+					if( mj_list[yy*nCols + xx]> m_max[MaxLevel-1][max_point_count])
+					{
+						m_max[MaxLevel-1][max_point_count] = mj_list[yy*nCols + xx];
+						myx[MaxLevel-1][max_point_count] = xx;
+						myy[MaxLevel-1][max_point_count] = yy;
+						myangle_index[MaxLevel-1][max_point_count] = mj_angle_list[yy*nCols + xx];
+					}
+
+				}
+			}
+
+			if(m_max[MaxLevel-1][max_point_count] < 0.7)
+				break;
+	}
+
+	delete mj_list;
+	delete mj_angle_list;
+
+	mj_list = NULL;
+	mj_angle_list = NULL;
+
+
+	int temp_angle_index;
+
+	vector<Point> point_with_zero_score_in_level0;
+
+	for (int level_index = MaxLevel-2; level_index >= 0;level_index--)
+	{
+		nRows = image_height[level_index];
+		nCols = image_width[level_index];
+		myx[level_index][0] = 0;
+		myy[level_index][0] = 0;
+		if(myx[level_index+1][0] == 0 || myy[level_index+1][0] == 0)
+			break;
+		myangle_index[level_index][0] = 0;
+		m_max[level_index][0] = 0;
+
+		nt_n = template_point_count[level_index] * user_threshold - template_point_count[level_index];
+		for(int yy = myy[level_index+1][0]*2-3; yy <= myy[level_index+1][0]*2+3; ++yy)
+		{
+			for (int xx = myx[level_index+1][0]*2-3; xx<=myx[level_index+1][0]*2+3; ++xx)
+			{
+
+				for (int angle_index = myangle_index[level_index+1][0]*2 - 2; angle_index <= myangle_index[level_index+1][0]*2 + 2; angle_index++)
+				{
+					vector<double> temp_score;
+					temp_score.clear();
+					temp_angle_index = angle_index;
+					if (angle_index < 0)
+						temp_angle_index = angle_index + angle_size[level_index];
+
+					if (angle_index >= angle_size[level_index])
+						temp_angle_index = angle_index - angle_size[level_index];
+					//vector<Point> temp_point_with_zero_score;
+					//temp_point_with_zero_score.clear();
+
+
+					float mj = 0;
+					DIRECTION temp_template_direction, temp_image_direction;
+					LOCATION temp_template_location;
+					for (int template_point_index = 0; template_point_index < template_point_count[level_index]; template_point_index++)
+					{
+						temp_template_direction = template_direction[level_index][temp_angle_index][template_point_index];
+						temp_template_location = template_location[level_index][temp_angle_index][template_point_index];
+
+						temp_x_index = temp_template_location.x + xx;
+						temp_y_index = temp_template_location.y + yy;
+
+						if(!(temp_x_index >=0 && temp_x_index < image_width[level_index] && temp_y_index>=0 && temp_y_index < image_height[level_index]))
+							continue;
+
+
+						//temp_image_direction = image_direction_map[level_index][temp_y_index][temp_x_index];
+						temp_image_direction = image_direction_map[level_index][temp_y_index*nCols+temp_x_index];
+
+
+						//mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[ModelIndex][level_index][template_point_index] * image_direction_length[level_index][temp_y_index][temp_x_index]);
+						mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[level_index][template_point_index] * image_direction_length[level_index][temp_y_index*nCols+temp_x_index]);
+					}
+					mj = mj/template_point_count[level_index];
+
+					//qDebug()<<x<<y<<temp_angle_index<<mj;
+					if (mj> m_max[level_index][0])
+					{
+						m_max[level_index][0] = mj;
+						myx[level_index][0] = xx;
+						myy[level_index][0] = yy;
+						myangle_index[level_index][0] = temp_angle_index;
+
+					}
+				}
+			}
+		}
+
+
+		if(level_index < MaxLevel-2)
+			continue;
+
+		myx[level_index][1] = 0;
+		myy[level_index][1] = 0;
+		if(myx[level_index+1][1] == 0 || myy[level_index+1][1] == 0)
+			continue;
+		myangle_index[level_index][1] = 0;
+		m_max[level_index][1] = 0;
+		for(int yy = myy[level_index+1][1]*2-3; yy <= myy[level_index+1][1]*2+3; ++yy)
+		{
+			for (int xx = myx[level_index+1][1]*2-3; xx<=myx[level_index+1][1]*2+3; ++xx)
+			{
+
+				for (int angle_index = myangle_index[level_index+1][1]*2 - 2; angle_index <= myangle_index[level_index+1][1]*2 + 2; angle_index++)
+				{
+					vector<double> temp_score;
+					temp_score.clear();
+					temp_angle_index = angle_index;
+					if (angle_index < 0)
+						temp_angle_index = angle_index + angle_size[level_index];
+
+					if (angle_index >= angle_size[level_index])
+						temp_angle_index = angle_index - angle_size[level_index];
+					//vector<Point> temp_point_with_zero_score;
+					//temp_point_with_zero_score.clear();
+
+
+					float mj = 0;
+					DIRECTION temp_template_direction, temp_image_direction;
+					LOCATION temp_template_location;
+					for (int template_point_index = 0; template_point_index < template_point_count[level_index]; template_point_index++)
+					{
+						temp_template_direction = template_direction[level_index][temp_angle_index][template_point_index];
+						temp_template_location = template_location[level_index][temp_angle_index][template_point_index];
+
+						temp_x_index = temp_template_location.x + xx;
+						temp_y_index = temp_template_location.y + yy;
+
+						if(!(temp_x_index >=0 && temp_x_index < image_width[level_index] && temp_y_index>=0 && temp_y_index < image_height[level_index]))
+							continue;
+
+
+						//temp_image_direction = image_direction_map[level_index][temp_y_index][temp_x_index];
+						temp_image_direction = image_direction_map[level_index][temp_y_index*nCols+temp_x_index];
+
+
+						//mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[ModelIndex][level_index][template_point_index] * image_direction_length[level_index][temp_y_index][temp_x_index]);
+						mj = mj + abs((temp_template_direction.x * temp_image_direction.x + temp_template_direction.y * temp_image_direction.y)* template_direction_length[level_index][template_point_index] * image_direction_length[level_index][temp_y_index*nCols+temp_x_index]);
+					}
+					mj = mj/template_point_count[level_index];
+
+					//qDebug()<<x<<y<<temp_angle_index<<mj;
+					if (mj> m_max[level_index][1])
+					{
+						m_max[level_index][1] = mj;
+						myx[level_index][1] = xx;
+						myy[level_index][1] = yy;
+						myangle_index[level_index][1] = temp_angle_index;
+
+					}
+				}
+			}
+		}
+
+
+		if(level_index == MaxLevel-2)
+		{
+			if(m_max[level_index][0] < m_max[level_index][1])
+			{
+				m_max[level_index][0] = m_max[level_index][1];
+				myx[level_index][0] = myx[level_index][1];
+				myy[level_index][0] = myy[level_index][1];
+				myangle_index[level_index][0] = myangle_index[level_index][1];
+			}
+		}
+	}
+
+
+	final_angle = myangle_index[0][0]*step[0];
+	if(final_angle > 180)
+		final_angle = final_angle - 360;
+
+
+	if(m_max[0][0] > score_threshold)
+	{
+		x = myx[0][0];
+		y = myy[0][0];
+		angle = final_angle;
+		score = m_max[0][0];
+		match_count++;
+	}
+
+
+	for(int level_index = 0;level_index < MaxLevel;level_index++)
+	{
+
+		delete[] image_direction_map[level_index];
+		delete[] image_direction_length[level_index];
+		delete[] myx[level_index];
+		delete[] myy[level_index];
+		delete[] myangle_index[level_index];
+		delete[] m_max[level_index];
+
+	}
+
+	delete[] image_direction_map;
+	delete[] image_direction_length;
+
+	delete[] myx;
+	delete[] myy;
+	delete[] myangle_index;
+	delete[] m_max;
+
+	delete[] image;
+	delete[] image_width;
+	delete[] image_height;
+	delete[] image_sobel_x;
+	delete[] image_sobel_y;
+
+
+	return match_count;
+
+}
+
+
 Matcher MatcherAdapter::matcher[] = {Matcher()};
 
 int MatcherAdapter::CreateModel(unsigned char* model, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int MatcherIndex)
@@ -645,4 +1132,9 @@ int MatcherAdapter::CreateModel(unsigned char* model, int width, int height, int
 int MatcherAdapter::MatchMulti(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex)
 {
 	return matcher[MatcherIndex].MatchMulti(image, width, height, MaxLevel, min_angle, max_angle, max_instance, score_threshold, x, y, angle, score);
+}
+
+int MatcherAdapter::Match(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, float score_threshold, float& x, float& y, float& angle, float& score, int MatcherIndex)
+{
+	return matcher[MatcherIndex].Match(image, width, height, MaxLevel, min_angle, max_angle, score_threshold, x, y, angle, score);
 }

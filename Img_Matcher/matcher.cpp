@@ -579,13 +579,11 @@ int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, 
 	
 	for (int count = 0; count < max_point_count; count++)
 	{
-		if(m_max[0][count] > score_threshold)
+		final_angle = myangle_index[0][count]*step[0];
+		if(final_angle > 180)
+			final_angle = final_angle - 360;
+		if(m_max[0][count] > score_threshold && final_angle > min_angle && final_angle < max_angle)
 		{
-			
-			final_angle = myangle_index[0][count]*step[0];
-			if(final_angle > 180)
-				final_angle = final_angle - 360;
-
 			x[match_count] = myx[0][count];
 			y[match_count] = myy[0][count];
 			angle[match_count] = final_angle;
@@ -594,11 +592,6 @@ int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, 
 		}
 
 	}
-	final_angle = myangle_index[0][0]*step[0];
-	if(final_angle > 180)
-		final_angle = final_angle - 360;
-
-
 	//delete各种对象
 
 
@@ -1080,7 +1073,7 @@ int Matcher::Match(byte *input_image, int width, int height, int MaxLevel, float
 		final_angle = final_angle - 360;
 
 
-	if(m_max[0][0] > score_threshold)
+	if(m_max[0][0] > score_threshold && final_angle > min_angle && final_angle < max_angle)
 	{
 		x = myx[0][0];
 		y = myy[0][0];

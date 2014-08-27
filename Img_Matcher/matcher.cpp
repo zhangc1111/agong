@@ -4,14 +4,8 @@
 
 Matcher::Matcher()
 {
-
-	//template_point_count.resize(99);
-	//template_location.resize(99);
-	//template_direction.resize(99);
-	//template_direction_length.resize(99);
-	//angle_size.resize(99);
-	//step.resize(99);
-	//m_size.resize(99);
+	isCreated = false;
+	m_maxLevel = 0;
 }
 
 Matcher::~Matcher()
@@ -21,8 +15,8 @@ Matcher::~Matcher()
 
 int Matcher::CreateModel(byte *image, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2)
 {
+	
 	Mat template_image = Mat(height, width, CV_8U, image);
-
 	if(template_image.empty())
 		return 1;
 
@@ -191,7 +185,50 @@ int Matcher::CreateModel(byte *image, int width, int height, int MaxLevel, int s
 
 		//delta_angle = delta_angle * 2;
 	}
+
+
+	delete[] input_template;
+	delete[] template_sobel_x;
+	delete[] template_sobel_y;
+	delete[] template_center;
+	delete[] canny_edges;
+
+	m_maxLevel = MaxLevel;
+	isCreated = true;
 	return 0;
+}
+
+int Matcher::DeleteModel()
+{
+	if(isCreated)
+	{
+		for (int index = 0; index < m_maxLevel; index++)
+		{
+
+			for (int i = 0; i < angle_size[index]; i++)
+			{
+				delete[] template_location[index][i];
+				delete[] template_direction[index][i];
+			}
+
+			delete[] template_direction_length[index];
+			delete[] template_location[index];
+			delete[] template_direction[index];
+		}
+
+		delete[] template_direction_length;
+		delete[] template_location;
+		delete[] template_direction;
+		
+		
+		delete[] angle_size;
+		delete[] template_point_count;
+		delete[] step;
+
+		return 1;
+	}
+	else 
+		return 0;
 }
 
 
@@ -278,10 +315,10 @@ int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, 
 	for(int level_index = 0;level_index < MaxLevel;level_index++)
 	{
 			
-		myx[level_index] = new int[10];
-		myy[level_index] = new int[10];
-		myangle_index[level_index] = new int[10];
-		m_max[level_index] = new float[10];
+		myx[level_index] = new int[max_instance * 2];
+		myy[level_index] = new int[max_instance * 2];
+		myangle_index[level_index] = new int[max_instance * 2];
+		m_max[level_index] = new float[max_instance * 2];
 			
 		//ÌáÈ¡¸÷²ãsobelÍ¼Ïñ
 		Sobel(image[level_index], image_sobel_x[level_index], CV_16S, 1, 0, m_size);
@@ -589,6 +626,8 @@ int Matcher::MatchMulti(byte *input_image, int width, int height, int MaxLevel, 
 			angle[match_count] = final_angle;
 			score[match_count] = m_max[0][count];
 			match_count++;
+			if(match_count == max_instance)
+				break;
 		}
 
 	}
@@ -1120,6 +1159,11 @@ Matcher MatcherAdapter::matcher[] = {Matcher()};
 int MatcherAdapter::CreateModel(unsigned char* model, int width, int height, int MaxLevel, int sobel_size, float step_length, double threshold1, double threshold2, int MatcherIndex)
 {
 	return matcher[MatcherIndex].CreateModel(model, width, height, MaxLevel, sobel_size, step_length, threshold1, threshold2);
+}
+
+int MatcherAdapter::DeleteModel(int MatcherIndex)
+{
+	return matcher[MatcherIndex].DeleteModel();
 }
 
 int MatcherAdapter::MatchMulti(unsigned char* image, int width, int height, int MaxLevel, float min_angle, float max_angle, int max_instance, float score_threshold, float* x, float* y, float* angle, float* score, int MatcherIndex)
